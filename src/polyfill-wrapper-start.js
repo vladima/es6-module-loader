@@ -33,3 +33,5 @@ $__Object$create = Object.create || function(o, props) {
   }
   return new F();
 };
+
+__global.Promise = RSVP && RSVP.Promise || require('rsvp').Promise;

@@ -44,6 +44,6 @@
   },
   "dependencies": {
     "traceur": "0.0.58",
-    "when": "^3.4.2"
+    "rsvp": "3.0.13"
   }
 }

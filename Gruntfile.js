@@ -22,7 +22,8 @@ module.exports = function (grunt) {
     concat: {
       dist: {
         src: [
-          'node_modules/when/es6-shim/Promise.js',
+          //'node_modules/when/es6-shim/Promise.js',
+          'node_modules/rsvp/dist/rsvp.js',
           'src/polyfill-wrapper-start.js',
           'dist/<%= pkg.name %>.js',
           'src/polyfill-wrapper-end.js'
