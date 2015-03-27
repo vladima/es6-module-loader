@@ -2500,7 +2500,7 @@ function logloads(loads) {
   function typescriptTranspile(load, ts) {
     var options = { module: ts.ModuleKind.AMD, target: ts.ScriptTarget.ES5 };
     var source = ts.transpile(load.source, options);
-    return "(function () {" + define.toString() + ";\n" + source + "\n })()" + '\n//# sourceURL=' + load.address + '!eval';
+    return "(function () { var define =" + define.toString() + ";\n" + source + "\n })()" + '\n//# sourceURL=' + load.address + '!eval';
 
     function define(dependencyNames, module) {
       return System.register(dependencyNames.slice(2), function ($__export) {
