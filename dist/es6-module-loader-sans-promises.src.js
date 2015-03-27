@@ -1139,13 +1139,27 @@ function logloads(loads) {
         self.set('traceur', getTranspilerModule(self, 'traceur'));
       if (g.babel && !self.has('babel'))
         self.set('babel', getTranspilerModule(self, 'babel'));
+      if (g.ts && !self.has('typescript'))
+        self.set('typescript', getTranspilerModule(self, 'ts'));
+
       firstRun = false;
     }
     
     return self['import'](self.transpiler).then(function(transpiler) {
       if (transpiler.__useDefault)
         transpiler = transpiler['default'];
-      return 'var __moduleAddress = "' + load.address + '";' + (transpiler.Compiler ? traceurTranspile : babelTranspile).call(self, load, transpiler);
+
+      var transpileFunction;
+      if (transpiler.Compiler) {
+        transpileFunction = traceurTranspile;
+      }
+      else if (transpiler.createLanguageService) {
+        transpileFunction = typescriptTranspile;
+      }
+      else {
+        transpileFunction = babelTranspile;
+      }
+      return address = 'var __moduleAddress = "' + load.address + '";' + transpileFunction.call(self, load, transpiler);
     });
   };
 
@@ -1212,8 +1226,34 @@ function logloads(loads) {
     // I believe this does something?
     return source + '\n//# sourceURL=' + load.address + '!eval';
   }
+  
+  function typescriptTranspile(load, ts) {
+    var options = { module: ts.ModuleKind.AMD, target: ts.ScriptTarget.ES5 };
+    var source = ts.transpile(load.source, options);
+    return "(function () {" + define.toString() + ";\n" + source + "\n })()" + '\n//# sourceURL=' + load.address + '!eval';
 
-
+    function define(dependencyNames, module) {
+      return System.register(dependencyNames.slice(2), function ($__export) {
+        var exports = {};
+        var imports = [{}, exports];
+        var setters = [];
+        for (var i = 0; i < dependencyNames.length - 2; ++i) {
+          setters.push(
+            (function (i) { return function (value) { imports[i + 2] = value; } })(i)
+          );
+        }
+        return {
+          setters: setters,
+          execute: function () {
+            module.apply(undefined, imports);
+            for (var n in exports) {
+              $__export(n, exports[n]);
+            }
+          }
+        }
+      });
+    }
+  }
 })(__global.LoaderPolyfill);/*
 *********************************************************************************************
 
@@ -1226,7 +1266,9 @@ function logloads(loads) {
 *********************************************************************************************
 */
 
-
+var $__Object$getPrototypeOf = Object.getPrototypeOf;
+var $__Object$defineProperty = Object.defineProperty;
+var $__Object$create = Object.create;
 
 (function() {
   var isWorker = typeof self !== 'undefined' && typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
