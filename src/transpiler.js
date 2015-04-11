@@ -110,30 +110,8 @@
   }
   
   function typescriptTranspile(load, ts) {
-    var options = { module: ts.ModuleKind.AMD, target: ts.ScriptTarget.ES5 };
+    var options = { module: ts.ModuleKind.System, target: ts.ScriptTarget.ES5, emitDecoratorMetadata: true };
     var source = ts.transpile(load.source, options);
-    return "(function () { var define =" + define.toString() + ";\n" + source + "\n })()" + '\n//# sourceURL=' + load.address + '!eval';
-
-    function define(dependencyNames, module) {
-      return System.register(dependencyNames.slice(2), function ($__export) {
-        var exports = {};
-        var imports = [{}, exports];
-        var setters = [];
-        for (var i = 0; i < dependencyNames.length - 2; ++i) {
-          setters.push(
-            (function (i) { return function (value) { imports[i + 2] = value; } })(i)
-          );
-        }
-        return {
-          setters: setters,
-          execute: function () {
-            module.apply(undefined, imports);
-            for (var n in exports) {
-              $__export(n, exports[n]);
-            }
-          }
-        }
-      });
-    }
+    return "(function () {\n" + source + "\n })()" + '\n//# sourceURL=' + load.address + '!eval';
   }
 })(__global.LoaderPolyfill);
