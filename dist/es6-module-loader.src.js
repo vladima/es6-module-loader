@@ -2500,7 +2500,7 @@ function logloads(loads) {
   function typescriptTranspile(load, ts) {
     var options = { module: ts.ModuleKind.System, target: ts.ScriptTarget.ES5, emitDecoratorMetadata: true };
     var source = ts.transpile(load.source, options);
-    return "(function () {\n" + source + "\n })()" + '\n//# sourceURL=' + load.address + '!eval';
+    return source + '\n//# sourceURL=' + load.address + '!eval';;
   }
 })(__global.LoaderPolyfill);/*
 *********************************************************************************************
