@@ -296,7 +296,7 @@ function logloads(loads) {
               // store the deps as load.deps
               load.declare = declare;
               load.depsList = deps;
-            }            
+            }
             __eval(transpiled, __global, load);
             curSystem.register = curRegister;
           });
@@ -548,10 +548,11 @@ function logloads(loads) {
   function linkSetFailed(linkSet, load, exc) {
     var loader = linkSet.loader;
 
-    if (linkSet.loads[0].name != load.name)
+    if (load && linkSet.loads[0].name != load.name)
       exc = addToError(exc, 'Error loading "' + load.name + '" from "' + linkSet.loads[0].name + '" at ' + (linkSet.loads[0].address || '<unknown>') + '\n');
 
-    exc = addToError(exc, 'Error loading "' + load.name + '" at ' + (load.address || '<unknown>') + '\n');
+    if (load)
+      exc = addToError(exc, 'Error loading "' + load.name + '" at ' + (load.address || '<unknown>') + '\n');
 
     var loads = linkSet.loads.concat([]);
     for (var i = 0, l = loads.length; i < l; i++) {
@@ -1125,7 +1126,6 @@ function logloads(loads) {
   function getTranspilerModule(loader, globalName) {
     return loader.newModule({ 'default': g[globalName], __useDefault: true });
   }
-  var firstRun = true;
 
   // use Traceur by default
   Loader.prototype.transpiler = 'traceur';
@@ -1134,15 +1134,14 @@ function logloads(loads) {
     var self = this;
 
     // pick up Transpiler modules from existing globals on first run if set
-    if (firstRun) {
+    if (!self.transpilerHasRun) {
       if (g.traceur && !self.has('traceur'))
         self.set('traceur', getTranspilerModule(self, 'traceur'));
       if (g.babel && !self.has('babel'))
         self.set('babel', getTranspilerModule(self, 'babel'));
       if (g.ts && !self.has('typescript'))
         self.set('typescript', getTranspilerModule(self, 'ts'));
-
-      firstRun = false;
+      self.transpilerHasRun = true;
     }
     
     return self['import'](self.transpiler).then(function(transpiler) {
@@ -1164,21 +1163,25 @@ function logloads(loads) {
   };
 
   Loader.prototype.instantiate = function(load) {
-    // load transpiler as a global (avoiding System clobbering)
-    if (load.name === this.transpiler) {      
-      var self = this;
-      return {
-        deps: [],
-        execute: function() {
-          var curSystem = g.System;
-          var curLoader = g.Reflect.Loader;
-          __eval('(function(require,exports,module){' + load.source + '})();', g, load);
-          g.System = curSystem;
-          g.Reflect.Loader = curLoader;
-          return getTranspilerModule(self, load.name);
-        }
-      };
-    }
+    var self = this;
+    return Promise.resolve(self.normalize(self.transpiler))
+    .then(function(transpilerNormalized) {
+      // load transpiler as a global (avoiding System clobbering)
+      if (load.name === transpilerNormalized) {
+        return {
+          deps: [],
+          execute: function() {
+            var curSystem = g.System;
+            var curLoader = g.Reflect.Loader;
+            // ensure not detected as CommonJS
+            __eval('(function(require,exports,module){' + load.source + '})();', g, load);
+            g.System = curSystem;
+            g.Reflect.Loader = curLoader;
+            return getTranspilerModule(self, load.name);
+          }
+        };
+      }
+    });
   };
 
   function traceurTranspile(load, traceur) {
@@ -1195,9 +1198,7 @@ function logloads(loads) {
 
     // add "!eval" to end of Traceur sourceURL
     // I believe this does something?
-    source += '!eval';
-
-    return source;
+    return source + '\n//# sourceURL=' + load.address + '!eval';
   }
   function doTraceurCompile(source, compiler, filename) {
     try {
@@ -1232,7 +1233,8 @@ function logloads(loads) {
     var source = ts.transpile(load.source, options);
     return source + '\n//# sourceURL=' + load.address + '!eval';;
   }
-})(__global.LoaderPolyfill);/*
+})(__global.LoaderPolyfill);
+/*
 *********************************************************************************************
 
   System Loader Implementation
