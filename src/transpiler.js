@@ -9,29 +9,32 @@ var transpile = (function() {
   function transpile(load) {
     var self = this;
 
-    return Promise.resolve(__global[self.transpiler == 'typescript' ? 'ts' : self.transpiler] 
-        || (self.pluginLoader || self)['import'](self.transpiler))
-    .then(function(transpiler) {
+    // pick up Transpiler modules from existing globals on first run if set
+    if (!self.transpilerHasRun) {
+      if (g.traceur && !self.has('traceur'))
+        self.set('traceur', getTranspilerModule(self, 'traceur'));
+      if (g.babel && !self.has('babel'))
+        self.set('babel', getTranspilerModule(self, 'babel'));
+      if (g.ts && !self.has('typescript'))
+        self.set('typescript', getTranspilerModule(self, 'ts'));
+      self.transpilerHasRun = true;
+    }
+    
+    return self['import'](self.transpiler).then(function(transpiler) {
       if (transpiler.__useDefault)
         transpiler = transpiler['default'];
 
       var transpileFunction;
-      if (transpiler.Compiler)
+      if (transpiler.Compiler) {
         transpileFunction = traceurTranspile;
-      else if (transpiler.createLanguageService)
+      }
+      else if (transpiler.createLanguageService) {
         transpileFunction = typescriptTranspile;
-      else
+      }
+      else {
         transpileFunction = babelTranspile;
-
-      return 'var __moduleName = "' + load.name + '", __moduleAddress = "' + load.address + '";'
-          + transpileFunction.call(self, load, transpiler)
-          + '\n//# sourceURL=' + load.address + '!eval';
-
-      // sourceURL and sourceMappingURL:
-      //   Ideally we wouldn't need a sourceURL and would just use the sourceMap.
-      //   But without the sourceURL as well, line-by-line debugging doesn't work.
-      //   We thus need to ensure the sourceURL is a different name to the original
-      //   source, and hence the !eval suffix.
+      }
+      return address = 'var __moduleAddress = "' + load.address + '";' + transpileFunction.call(self, load, transpiler);
     });
   };
 
@@ -90,18 +93,10 @@ var transpile = (function() {
 
     return babel.transform(load.source, options).code;
   }
-
+  
   function typescriptTranspile(load, ts) {
-    var options = this.typescriptOptions || {};
-    if (options.target === undefined) {
-      options.target = ts.ScriptTarget.ES5;
-    }
-    options.module = ts.ModuleKind.System;
-    options.inlineSourceMap = true;
-
-    var source = ts.transpile(load.source, options, load.address);
+    var options = { module: ts.ModuleKind.System, target: ts.ScriptTarget.ES5, emitDecoratorMetadata: true };
+    var source = ts.transpile(load.source, options);
     return source + '\n//# sourceURL=' + load.address + '!eval';;
   }
-
-  return transpile;
-})();
+})(__global.LoaderPolyfill);
