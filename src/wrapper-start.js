@@ -4,10 +4,9 @@
   var isBrowser = typeof window != 'undefined' && typeof document != 'undefined';
   var isWindows = typeof process != 'undefined' && !!process.platform.match(/^win/);
 
-  if (!__global.console) {
-      __global.console = { assert: function() {} };
-  }
-  
+  if (!__global.console)
+    __global.console = { assert: function() {} };
+
   // IE8 support
   var indexOf = Array.prototype.indexOf || function(item) {
     for (var i = 0, thisLen = this.length; i < thisLen; i++) {
@@ -57,10 +56,7 @@
     }
   }
 
-  var URL = __global.URL || URLPolyfill;
-
   var baseURI;
-
   // environent baseURI detection
   if (typeof document != 'undefined' && document.getElementsByTagName) {
     baseURI = document.baseURI;
@@ -85,3 +81,5 @@
   else {
     throw new TypeError('No environment baseURI');
   }
+
+  var URL = typeof __global.URL == 'function' && __global.URL || URLPolyfill;

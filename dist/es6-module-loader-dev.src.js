@@ -4,8 +4,8 @@
   var isBrowser = typeof window != 'undefined' && typeof document != 'undefined';
   var isWindows = typeof process != 'undefined' && !!process.platform.match(/^win/);
 
-  if (__global.console)
-    console.assert = console.assert || function() {};
+  if (!__global.console)
+    __global.console = { assert: function() {} };
 
   // IE8 support
   var indexOf = Array.prototype.indexOf || function(item) {
@@ -54,12 +54,23 @@
     catch(e) {
       throw addToError(e, 'Evaluating ' + debugName);
     }
+  })();
+
+  function addToError(err, msg) {
+    var newErr;
+    if (err instanceof Error) {
+      var newErr = new Error(err.message, err.fileName, err.lineNumber);
+      newErr.message = err.message + '\n\t' + msg;
+      newErr.stack = err.stack;
+    }
+    else {
+      newErr = err + '\n\t' + msg;
+    }
+      
+    return newErr;
   }
 
-  var URL = __global.URL || URLPolyfill;
-
   var baseURI;
-
   // environent baseURI detection
   if (typeof document != 'undefined' && document.getElementsByTagName) {
     baseURI = document.baseURI;
@@ -84,8 +95,8 @@
   else {
     throw new TypeError('No environment baseURI');
   }
-  return new F();
-};
+
+  var URL = typeof __global.URL == 'function' && __global.URL || URLPolyfill;
 
 /*
 *********************************************************************************************
@@ -609,13 +620,13 @@ function logloads(loads) {
 
     if (load) {
       if (load && linkSet.loads[0].name != load.name)
-        exc = addToError(exc, 'Error loading "' + load.name + '" from "' + linkSet.loads[0].name + '" at ' + (linkSet.loads[0].address || '<unknown>'));
+        exc = addToError(exc, 'Error loading ' + load.name + ' from ' + linkSet.loads[0].name);
 
       if (load)
-        exc = addToError(exc, 'Error loading "' + load.name + '" at ' + (load.address || '<unknown>'));
+        exc = addToError(exc, 'Error loading ' + load.name);
     }
     else {
-      exc = addToError(exc, 'Error linking "' + linkSet.loads[0].name + '" at ' + (linkSet.loads[0].address || '<unknown>'));
+      exc = addToError(exc, 'Error linking ' + linkSet.loads[0].name);
     }
 
 
@@ -1159,54 +1170,22 @@ var transpile = (function() {
   function transpile(load) {
     var self = this;
 
-    // pick up Transpiler modules from existing globals on first run if set
-    if (!self.transpilerHasRun) {
-      if (g.traceur && !self.has('traceur'))
-        self.set('traceur', getTranspilerModule(self, 'traceur'));
-      if (g.babel && !self.has('babel'))
-        self.set('babel', getTranspilerModule(self, 'babel'));
-      if (g.ts && !self.has('typescript'))
-        self.set('typescript', getTranspilerModule(self, 'ts'));
-      self.transpilerHasRun = true;
-    }
-    
-    return self['import'](self.transpiler).then(function(transpiler) {
+    return Promise.resolve(__global[self.transpiler == 'typescript' ? 'ts' : self.transpiler]
+        || (self.pluginLoader || self)['import'](self.transpiler))
+    .then(function(transpiler) {
       if (transpiler.__useDefault)
         transpiler = transpiler['default'];
 
       var transpileFunction;
-      if (transpiler.Compiler) {
+      if (transpiler.Compiler)
         transpileFunction = traceurTranspile;
-      }
-      else if (transpiler.createLanguageService) {
+      else if (transpiler.createLanguageService)
         transpileFunction = typescriptTranspile;
-      }
-      else {
+      else
         transpileFunction = babelTranspile;
-      }
-      return address = 'var __moduleAddress = "' + load.address + '";' + transpileFunction.call(self, load, transpiler);
-    });
-  };
 
-  Loader.prototype.instantiate = function(load) {
-    var self = this;
-    return Promise.resolve(self.normalize(self.transpiler))
-    .then(function(transpilerNormalized) {
-      // load transpiler as a global (avoiding System clobbering)
-      if (load.address === transpilerNormalized) {
-        return {
-          deps: [],
-          execute: function() {
-            var curSystem = __global.System;
-            var curLoader = __global.Reflect.Loader;
-            // ensure not detected as CommonJS
-            __eval('(function(require,exports,module){' + load.source + '})();', load.address, __global);
-            __global.System = curSystem;
-            __global.Reflect.Loader = curLoader;
-            return self.newModule({ 'default': __global[self.transpiler], __useDefault: true });
-          }
-        };
-      }
+      // note __moduleName will be part of the transformer meta in future when we have the spec for this
+      return 'var __moduleName = "' + load.name + '";' + transpileFunction.call(self, load, transpiler) + '\n//# sourceURL=' + load.address + '!transpiled';
     });
   };
 
@@ -1237,6 +1216,7 @@ var transpile = (function() {
     var options = this.babelOptions || {};
     options.modules = 'system';
     options.sourceMap = 'inline';
+    options.inputSourceMap = load.metadata.sourceMap;
     options.filename = load.address;
     options.code = true;
     options.ast = false;
@@ -1252,16 +1232,80 @@ var transpile = (function() {
     options.module = ts.ModuleKind.System;
     options.inlineSourceMap = true;
 
-    var source = ts.transpile(load.source, options, load.address);
-    return source + '\n//# sourceURL=' + load.address + '!eval';;
+    return ts.transpile(load.source, options, load.address);
   }
-  
-  function typescriptTranspile(load, ts) {
-    var options = { module: ts.ModuleKind.System, target: ts.ScriptTarget.ES5, emitDecoratorMetadata: true };
-    var source = ts.transpile(load.source, options);
-    return source + '\n//# sourceURL=' + load.address + '!eval';;
+
+  return transpile;
+})();
+
+// from https://gist.github.com/Yaffle/1088850
+function URLPolyfill(url, baseURL) {
+  if (typeof url != 'string')
+    throw new TypeError('URL must be a string');
+  var m = String(url).replace(/^\s+|\s+$/g, "").match(/^([^:\/?#]+:)?(?:\/\/(?:([^:@\/?#]*)(?::([^:@\/?#]*))?@)?(([^:\/?#]*)(?::(\d*))?))?([^?#]*)(\?[^#]*)?(#[\s\S]*)?/);
+  if (!m) {
+    throw new RangeError();
   }
-})(__global.LoaderPolyfill);
+  var protocol = m[1] || "";
+  var username = m[2] || "";
+  var password = m[3] || "";
+  var host = m[4] || "";
+  var hostname = m[5] || "";
+  var port = m[6] || "";
+  var pathname = m[7] || "";
+  var search = m[8] || "";
+  var hash = m[9] || "";
+  if (baseURL !== undefined) {
+    var base = baseURL instanceof URLPolyfill ? baseURL : new URLPolyfill(baseURL);
+    var flag = protocol === "" && host === "" && username === "";
+    if (flag && pathname === "" && search === "") {
+      search = base.search;
+    }
+    if (flag && pathname.charAt(0) !== "/") {
+      pathname = (pathname !== "" ? (((base.host !== "" || base.username !== "") && base.pathname === "" ? "/" : "") + base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1) + pathname) : base.pathname);
+    }
+    // dot segments removal
+    var output = [];
+    pathname.replace(/^(\.\.?(\/|$))+/, "")
+      .replace(/\/(\.(\/|$))+/g, "/")
+      .replace(/\/\.\.$/, "/../")
+      .replace(/\/?[^\/]*/g, function (p) {
+        if (p === "/..") {
+          output.pop();
+        } else {
+          output.push(p);
+        }
+      });
+    pathname = output.join("").replace(/^\//, pathname.charAt(0) === "/" ? "/" : "");
+    if (flag) {
+      port = base.port;
+      hostname = base.hostname;
+      host = base.host;
+      password = base.password;
+      username = base.username;
+    }
+    if (protocol === "") {
+      protocol = base.protocol;
+    }
+  }
+
+  // convert windows file URLs to use /
+  if (protocol == 'file:')
+    pathname = pathname.replace(/\\/g, '/');
+
+  this.origin = protocol + (protocol !== "" || host !== "" ? "//" : "") + host;
+  this.href = protocol + (protocol !== "" || host !== "" ? "//" : "") + (username !== "" ? username + (password !== "" ? ":" + password : "") + "@" : "") + host + pathname + search + hash;
+  this.protocol = protocol;
+  this.username = username;
+  this.password = password;
+  this.host = host;
+  this.hostname = hostname;
+  this.port = port;
+  this.pathname = pathname;
+  this.search = search;
+  this.hash = hash;
+}
+(typeof self != 'undefined' ? self : global).URLPolyfill = URLPolyfill;
 /*
 *********************************************************************************************
 
@@ -1274,13 +1318,10 @@ var transpile = (function() {
 *********************************************************************************************
 */
 
-var $__Object$getPrototypeOf = Object.getPrototypeOf;
-var $__Object$defineProperty = Object.defineProperty;
-var $__Object$create = Object.create;
+var System;
 
-  baseURL = baseURL || baseURI;
-
-  this.baseURL = baseURL;
+function SystemLoader() {
+  Loader.call(this);
   this.paths = {};
 }
 
@@ -1339,16 +1380,40 @@ SystemLoader.prototype.normalize = function(name, parentName, parentAddress) {
 
   // not absolute or relative -> apply paths (what will be sites)
   if (!name.match(absURLRegEx) && name[0] != '.')
-    name = new URL(applyPaths(this, name), this.baseURL).href;
+    name = new URL(applyPaths(this, name), baseURI).href;
   // apply parent-relative normalization, parentAddress is already normalized
   else
-    name = new URL(name, parentAddress || this.baseURL).href;
+    name = new URL(name, parentName || baseURI).href;
 
   return name;
 };
 
 SystemLoader.prototype.locate = function(load) {
   return load.name;
+};
+
+
+// ensure the transpiler is loaded correctly
+SystemLoader.prototype.instantiate = function(load) {
+  var self = this;
+  return Promise.resolve(self.normalize(self.transpiler))
+  .then(function(transpilerNormalized) {
+    // load transpiler as a global (avoiding System clobbering)
+    if (load.address === transpilerNormalized) {
+      return {
+        deps: [],
+        execute: function() {
+          var curSystem = __global.System;
+          var curLoader = __global.Reflect.Loader;
+          // ensure not detected as CommonJS
+          __eval('(function(require,exports,module){' + load.source + '})();', load.address, __global);
+          __global.System = curSystem;
+          __global.Reflect.Loader = curLoader;
+          return self.newModule({ 'default': __global[self.transpiler], __useDefault: true });
+        }
+      };
+    }
+  });
 };
   var fetchTextFromURL;
   if (typeof XMLHttpRequest != 'undefined') {
@@ -1420,8 +1485,14 @@ SystemLoader.prototype.locate = function(load) {
       return fs.readFile(url, function(err, data) {
         if (err)
           return reject(err);
-        else
-          fulfill(data + '');
+        else {
+          // Strip Byte Order Mark out if it's the leading char
+          var dataString = data + '';
+          if (dataString[0] === '\ufeff')
+            dataString = dataString.substr(1);
+
+          fulfill(dataString);
+        }
       });
     };
   }
@@ -1471,7 +1542,10 @@ SystemLoader.prototype.locate = function(load) {
     }
   }
 })();
+  // -- exporting --
 
+  if (typeof exports === 'object')
+    module.exports = Loader;
 
   __global.Reflect = __global.Reflect || {};
   __global.Reflect.Loader = __global.Reflect.Loader || Loader;

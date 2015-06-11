@@ -1,40 +1,39 @@
 # ES6 Module Loader Polyfill [![Build Status][travis-image]][travis-url]
 
-_For upgrading to ES6 Module Loader 0.16, [read the release notes here](https://github.com/ModuleLoader/es6-module-loader/releases/tag/v0.16.0)._
+_For upgrading to ES6 Module Loader 0.17, [read the release notes here](https://github.com/ModuleLoader/es6-module-loader/releases/tag/v0.17.0)._
 
 Dynamically loads ES6 modules in browsers and [NodeJS](#nodejs-use) with support for loading existing and custom module formats through loader hooks.
 
-This project implements dynamic module loading through `System` exactly to the previous ES6-specified loader API at [2014-08-24 ES6 Specification Draft Rev 27, Section 15](http://wiki.ecmascript.org/doku.php?id=harmony:specification_drafts#august_24_2014_draft_rev_27). The new loader implementing the [WhatWG loader spec](https://github.com/whatwg/loader) is pending alpha release on the [1.0 branch](https://github.com/ModuleLoader/es6-module-loader/tree/1.0).
+This project implements dynamic module loading through `System` exactly to the previous ES6-specified loader API at [2014-08-24 ES6 Specification Draft Rev 27, Section 15](http://wiki.ecmascript.org/doku.php?id=harmony:specification_drafts#august_24_2014_draft_rev_27). The specification for the module loader was removed from the ES6/ES2015 specification in 2014, and a new loader implementing the new draft [WhatWG loader spec](https://github.com/whatwg/loader) is pending alpha release on the [1.0 branch](https://github.com/ModuleLoader/es6-module-loader/tree/1.0).
 
 * Provides an asynchronous loader (`System.import`) to [dynamically load ES6 modules](#getting-started).
 * Supports [Traceur](https://github.com/google/traceur-compiler), [Babel](http://babeljs.io/) and [TypeScript](https://github.com/Microsoft/TypeScript/) for compiling ES6 modules and syntax into ES5 in the browser with source map support.
-* Fully supports [ES6 circular references and live bindings](https://github.com/ModuleLoader/es6-module-loader/wiki/Circular-References-&-Bindings).
-* Includes [`baseURL` and `paths` implementations](https://github.com/ModuleLoader/es6-module-loader/wiki/Configuring-the-Loader).
-* Can be used as a [tracing tool](https://github.com/ModuleLoader/es6-module-loader/wiki/Tracing-API) for static analysis of modules.
-* Polyfills ES6 Promises in the browser with an optionally bundled ES6 promise implementation.
+* Fully supports [ES6 circular references and live bindings](docs/circular-references-bindings.md).
+* Includes [`paths` implementation](docs/loader-config.md).
+* Can be used as a [tracing tool](docs/tracing-api.md) for static analysis of modules.
 * Supports IE8+, with IE9+ support for ES6 development without pre-compilation.
-* The complete combined polyfill, including ES6 promises, comes to 9KB minified and gzipped, making it suitable for production use, provided that modules are [built into ES5 making them independent of Traceur](https://github.com/ModuleLoader/es6-module-loader/wiki/Production-Workflows).
+* The minified production loader is under 5KB minified and gzipped, making it suitable for production use, provided that modules are [built into ES5 making them independent of Traceur](docs/production-workflows.md).
+* Supports declaring modules with `<script type="module">`, the precursor of the proposed [`<module>` tag](https://github.com/dherman/module-tag/).
 
-For an overview of build workflows, [see the production guide](https://github.com/ModuleLoader/es6-module-loader/wiki/Production-Workflows).
+For an overview of build workflows, [see the production guide](docs/production-workflows.md).
 
 For an example of a universal module loader based on this polyfill for loading AMD, CommonJS and globals, see [SystemJS](https://github.com/systemjs/systemjs).
 
 ### Documentation
 
-* [A brief overview of ES6 module syntax](https://github.com/ModuleLoader/es6-module-loader/wiki/Brief-Overview-of-ES6-Module-syntax)
-* [Configuring the loader](https://github.com/ModuleLoader/es6-module-loader/wiki/Configuring-the-Loader)
-* [Production workflows](https://github.com/ModuleLoader/es6-module-loader/wiki/Production-Workflows)
-* [Circular References &amp; Bindings](https://github.com/ModuleLoader/es6-module-loader/wiki/Circular-References-&-Bindings)
-* [Extending the loader through loader hooks](https://github.com/ModuleLoader/es6-module-loader/wiki/Extending-the-ES6-Loader)
-* [Tracing API](https://github.com/ModuleLoader/es6-module-loader/wiki/Tracing-API)
+* [Configuring the loader](docs/loader-config.md)
+* [Production workflows](docs/production-workflows.md)
+* [Circular References &amp; Bindings](docs/circular-references-bindings.md)
+* [Extending the loader through loader hooks](docs/loader-extensions.md)
+* [Tracing API](docs/tracing-api.md)
 
 ### Getting Started
 
-If using ES6 syntax (optional), include `traceur.js`, `babel.js` or `typescript.js` in the page first then include `es6-module-loader.js`:
+If using ES6 syntax (optional), include `traceur.js`, `babel.js` or `typescript.js` in the page first then include `es6-module-loader-dev.js`:
 
 ```html
   <script src="traceur.js"></script>
-  <script src="es6-module-loader.js"></script>
+  <script src="es6-module-loader-dev.js"></script>
 ```
 
 To use Babel, load Babel's `browser.js` instead and set the transpiler to `babel` with the loader configuration:
@@ -76,6 +75,10 @@ and load the module dynamically in the browser
 
 The dynamic loader returns a `Module` object, which contains getters for the named exports (in this case, `q`).
 
+See the [demo folder](https://github.com/ModuleLoader/es6-module-loader/blob/master/demo/index.html) in this repo for a working example demonstrating module loading in the browser both with `System.import` and with the module-type script tag.
+
+Although `System.import()` does not support the import of multiple modules defined in an array, because `System.import()` returns a Promise, this can be achieved by creating an array of `System.import`s and using `Promise.all()`.
+
 #### Setting transpilation options
 
 If using Traceur, these can be set with:
@@ -110,8 +113,6 @@ As well as defining `window.System`, this polyfill provides support for the `<sc
 ```
 
 Because it is only possible to load ES6 modules with this tag, it is not suitable for production use in this way.
-
-See the [demo folder](https://github.com/ModuleLoader/es6-module-loader/blob/master/demo/index.html) in this repo for a working example demonstrating module loading in the browser both with `System.import` and with the module-type script tag.
 
 #### NodeJS Use
 
