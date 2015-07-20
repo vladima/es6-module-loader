@@ -1,3 +1,73 @@
+// from https://gist.github.com/Yaffle/1088850
+(function(global) {
+function URLPolyfill(url, baseURL) {
+  if (typeof url != 'string')
+    throw new TypeError('URL must be a string');
+  var m = String(url).replace(/^\s+|\s+$/g, "").match(/^([^:\/?#]+:)?(?:\/\/(?:([^:@\/?#]*)(?::([^:@\/?#]*))?@)?(([^:\/?#]*)(?::(\d*))?))?([^?#]*)(\?[^#]*)?(#[\s\S]*)?/);
+  if (!m) {
+    throw new RangeError();
+  }
+  var protocol = m[1] || "";
+  var username = m[2] || "";
+  var password = m[3] || "";
+  var host = m[4] || "";
+  var hostname = m[5] || "";
+  var port = m[6] || "";
+  var pathname = m[7] || "";
+  var search = m[8] || "";
+  var hash = m[9] || "";
+  if (baseURL !== undefined) {
+    var base = baseURL instanceof URLPolyfill ? baseURL : new URLPolyfill(baseURL);
+    var flag = protocol === "" && host === "" && username === "";
+    if (flag && pathname === "" && search === "") {
+      search = base.search;
+    }
+    if (flag && pathname.charAt(0) !== "/") {
+      pathname = (pathname !== "" ? (((base.host !== "" || base.username !== "") && base.pathname === "" ? "/" : "") + base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1) + pathname) : base.pathname);
+    }
+    // dot segments removal
+    var output = [];
+    pathname.replace(/^(\.\.?(\/|$))+/, "")
+      .replace(/\/(\.(\/|$))+/g, "/")
+      .replace(/\/\.\.$/, "/../")
+      .replace(/\/?[^\/]*/g, function (p) {
+        if (p === "/..") {
+          output.pop();
+        } else {
+          output.push(p);
+        }
+      });
+    pathname = output.join("").replace(/^\//, pathname.charAt(0) === "/" ? "/" : "");
+    if (flag) {
+      port = base.port;
+      hostname = base.hostname;
+      host = base.host;
+      password = base.password;
+      username = base.username;
+    }
+    if (protocol === "") {
+      protocol = base.protocol;
+    }
+  }
+
+  // convert windows file URLs to use /
+  if (protocol == 'file:')
+    pathname = pathname.replace(/\\/g, '/');
+
+  this.origin = protocol + (protocol !== "" || host !== "" ? "//" : "") + host;
+  this.href = protocol + (protocol !== "" || host !== "" ? "//" : "") + (username !== "" ? username + (password !== "" ? ":" + password : "") + "@" : "") + host + pathname + search + hash;
+  this.protocol = protocol;
+  this.username = username;
+  this.password = password;
+  this.host = host;
+  this.hostname = hostname;
+  this.port = port;
+  this.pathname = pathname;
+  this.search = search;
+  this.hash = hash;
+}
+global.URLPolyfill = URLPolyfill;
+})(typeof self != 'undefined' ? self : global);
 (function(__global) {
 
   var isWorker = typeof window == 'undefined' && typeof self != 'undefined' && typeof importScripts != 'undefined';
@@ -37,8 +107,15 @@
     var newErr;
     if (err instanceof Error) {
       var newErr = new Error(err.message, err.fileName, err.lineNumber);
-      newErr.message = err.message + '\n\t' + msg;
-      newErr.stack = err.stack;
+      if (isBrowser) {
+        newErr.message = err.message + '\n\t' + msg;
+        newErr.stack = err.stack;
+      }
+      else {
+        // node errors only look correct with the stack modified
+        newErr.message = err.message;
+        newErr.stack = err.stack + '\n\t' + msg;
+      }
     }
     else {
       newErr = err + '\n\t' + msg;
@@ -96,7 +173,7 @@
     throw new TypeError('No environment baseURI');
   }
 
-  var URL = typeof __global.URL == 'function' && __global.URL || URLPolyfill;
+  var URL = __global.URLPolyfill || __global.URL;
 
 /*
 *********************************************************************************************
@@ -1006,7 +1083,16 @@ function logloads(loads) {
       //    By disaling this module write-protection we gain performance.
       //    It could be useful to allow an option to enable or disable this.
       module.locked = true;
-      moduleObj[name] = value;
+
+      // export({name: value})
+      if (typeof name == 'object') {
+        for (var p in name)
+          moduleObj[p] = name[p];
+      }
+      // export(name, value)
+      else {
+        moduleObj[name] = value;
+      }
 
       for (var i = 0, l = module.importers.length; i < l; i++) {
         var importerModule = module.importers[i];
@@ -1238,74 +1324,6 @@ var transpile = (function() {
   return transpile;
 })();
 
-// from https://gist.github.com/Yaffle/1088850
-function URLPolyfill(url, baseURL) {
-  if (typeof url != 'string')
-    throw new TypeError('URL must be a string');
-  var m = String(url).replace(/^\s+|\s+$/g, "").match(/^([^:\/?#]+:)?(?:\/\/(?:([^:@\/?#]*)(?::([^:@\/?#]*))?@)?(([^:\/?#]*)(?::(\d*))?))?([^?#]*)(\?[^#]*)?(#[\s\S]*)?/);
-  if (!m) {
-    throw new RangeError();
-  }
-  var protocol = m[1] || "";
-  var username = m[2] || "";
-  var password = m[3] || "";
-  var host = m[4] || "";
-  var hostname = m[5] || "";
-  var port = m[6] || "";
-  var pathname = m[7] || "";
-  var search = m[8] || "";
-  var hash = m[9] || "";
-  if (baseURL !== undefined) {
-    var base = baseURL instanceof URLPolyfill ? baseURL : new URLPolyfill(baseURL);
-    var flag = protocol === "" && host === "" && username === "";
-    if (flag && pathname === "" && search === "") {
-      search = base.search;
-    }
-    if (flag && pathname.charAt(0) !== "/") {
-      pathname = (pathname !== "" ? (((base.host !== "" || base.username !== "") && base.pathname === "" ? "/" : "") + base.pathname.slice(0, base.pathname.lastIndexOf("/") + 1) + pathname) : base.pathname);
-    }
-    // dot segments removal
-    var output = [];
-    pathname.replace(/^(\.\.?(\/|$))+/, "")
-      .replace(/\/(\.(\/|$))+/g, "/")
-      .replace(/\/\.\.$/, "/../")
-      .replace(/\/?[^\/]*/g, function (p) {
-        if (p === "/..") {
-          output.pop();
-        } else {
-          output.push(p);
-        }
-      });
-    pathname = output.join("").replace(/^\//, pathname.charAt(0) === "/" ? "/" : "");
-    if (flag) {
-      port = base.port;
-      hostname = base.hostname;
-      host = base.host;
-      password = base.password;
-      username = base.username;
-    }
-    if (protocol === "") {
-      protocol = base.protocol;
-    }
-  }
-
-  // convert windows file URLs to use /
-  if (protocol == 'file:')
-    pathname = pathname.replace(/\\/g, '/');
-
-  this.origin = protocol + (protocol !== "" || host !== "" ? "//" : "") + host;
-  this.href = protocol + (protocol !== "" || host !== "" ? "//" : "") + (username !== "" ? username + (password !== "" ? ":" + password : "") + "@" : "") + host + pathname + search + hash;
-  this.protocol = protocol;
-  this.username = username;
-  this.password = password;
-  this.host = host;
-  this.hostname = hostname;
-  this.port = port;
-  this.pathname = pathname;
-  this.search = search;
-  this.hash = hash;
-}
-(typeof self != 'undefined' ? self : global).URLPolyfill = URLPolyfill;
 /*
 *********************************************************************************************
 
@@ -1326,12 +1344,12 @@ function SystemLoader() {
 }
 
 // NB no specification provided for System.paths, used ideas discussed in https://github.com/jorendorff/js-loaders/issues/25
-function applyPaths(loader, name) {
+function applyPaths(paths, name) {
   // most specific (most number of slashes in path) match wins
   var pathMatch = '', wildcard, maxSlashCount = 0;
 
   // check to see if we have a paths entry
-  for (var p in loader.paths) {
+  for (var p in paths) {
     var pathParts = p.split('*');
     if (pathParts.length > 2)
       throw new TypeError('Only one wildcard in a path is permitted');
@@ -1356,7 +1374,7 @@ function applyPaths(loader, name) {
     }
   }
 
-  var outPath = loader.paths[pathMatch] || name;
+  var outPath = paths[pathMatch] || name;
   if (wildcard)
     outPath = outPath.replace('*', wildcard);
 
@@ -1368,8 +1386,6 @@ function LoaderProto() {}
 LoaderProto.prototype = Loader.prototype;
 SystemLoader.prototype = new LoaderProto();
 
-var baseURLCache = {};
-
 var absURLRegEx = /^([^\/]+:\/\/|\/)/;
 
 // Normalization with module names as absolute URLs
@@ -1380,7 +1396,7 @@ SystemLoader.prototype.normalize = function(name, parentName, parentAddress) {
 
   // not absolute or relative -> apply paths (what will be sites)
   if (!name.match(absURLRegEx) && name[0] != '.')
-    name = new URL(applyPaths(this, name), baseURI).href;
+    name = new URL(applyPaths(this.paths, name), baseURI).href;
   // apply parent-relative normalization, parentAddress is already normalized
   else
     name = new URL(name, parentName || baseURI).href;
